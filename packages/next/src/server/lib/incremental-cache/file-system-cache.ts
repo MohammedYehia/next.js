@@ -276,6 +276,12 @@ export default class FileSystemCache implements CacheHandler {
       }
     }
 
+    // If allowStale is true, we return the data even if it's stale, so we
+    // return before validating the tags.
+    if ('allowStale' in ctx && ctx.allowStale) {
+      return data ?? null
+    }
+
     if (
       data?.value?.kind === CachedRouteKind.APP_PAGE ||
       data?.value?.kind === CachedRouteKind.PAGES

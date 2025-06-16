@@ -219,6 +219,11 @@ export interface GetIncrementalResponseCacheContext {
    * True if this is a fallback request.
    */
   isFallback: boolean
+
+  /**
+   * If true, this will allow the cache to serve stale data.
+   */
+  allowStale?: boolean
 }
 
 export interface SetIncrementalFetchCacheContext {

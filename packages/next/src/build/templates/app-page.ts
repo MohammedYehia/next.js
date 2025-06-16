@@ -36,6 +36,7 @@ import {
 import { getBotType, isBot } from '../../shared/lib/router/utils/is-bot'
 import {
   CachedRouteKind,
+  IncrementalCacheKind,
   type CachedAppPageValue,
   type CachedPageValue,
   type ResponseCacheEntry,
@@ -414,6 +415,8 @@ export async function handler(
       })
     }
 
+    const incrementalCache = getRequestMeta(req, 'incrementalCache')
+
     const doRender = async ({
       span,
       postponed,
@@ -485,7 +488,7 @@ export async function handler(
           reactMaxHeadersLength: nextConfig.reactMaxHeadersLength,
 
           multiZoneDraftMode,
-          incrementalCache: getRequestMeta(req, 'incrementalCache'),
+          incrementalCache,
           cacheLifeProfiles: nextConfig.experimental.cacheLife,
           basePath: nextConfig.basePath,
           serverActions: nextConfig.experimental.serverActions,
@@ -698,12 +701,41 @@ export async function handler(
           }
         }
       }
+
       // Only requests that aren't revalidating can be resumed. If we have the
       // minimal postponed data, then we should resume the render with it.
-      const postponed =
+      let postponed =
         !isOnDemandRevalidate && !isRevalidating && minimalPostponed
           ? minimalPostponed
           : undefined
+
+      // If this is a dynamic RSC request, we should use the postponed data from
+      // the static render (if available). This ensures that we can utilize the
+      // resume data cache (RDC) from the static render to ensure that the data
+      // is consistent between the static and dynamic renders.
+      if (
+        process.env.NEXT_RUNTIME !== 'edge' &&
+        !minimalMode &&
+        incrementalCache &&
+        isDynamicRSCRequest
+      ) {
+        const cachedEntry = await incrementalCache.get(resolvedPathname, {
+          kind: IncrementalCacheKind.APP_PAGE,
+          isRoutePPREnabled: true,
+          isFallback: false,
+          allowStale: true,
+        })
+
+        // If the cache entry is found, we should use the postponed data from
+        // the cache.
+        if (
+          cachedEntry &&
+          cachedEntry.value &&
+          cachedEntry.value.kind === CachedRouteKind.APP_PAGE
+        ) {
+          postponed = cachedEntry.value.postponed
+        }
+      }
 
       // When we're in minimal mode, if we're trying to debug the static shell,
       // we should just return nothing instead of resuming the dynamic render.
